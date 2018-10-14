@@ -60,7 +60,7 @@ case class WskcClientConfig(timeouts: WskcClientTimeoutConfig)
   *
   * Only one instance per invoker is needed.
   */
-class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientConfig](ConfigKeys.dockerClient))(
+class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientConfig](ConfigKeys.containerdClient))(
   executionContext: ExecutionContext)(
   implicit log: Logging, as: ActorSystem)
   extends WskcApi with ProcessRunner {
@@ -92,7 +92,7 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
     runCmd(Seq("cleanup"), config.timeouts.cleanup).map(_ => ())
   }
 
-  // wskc --namespace wsk run --memory=256 docker.io/openwhisk/action-nodejs-v8:latest mycontainer
+  // wskc --namespace wsk run --cpu-shares=0 --memory=256 --memory-swap=256 docker.io/openwhisk/action-nodejs-v8:latest mycontainer
   def run(image: String, name: String, args: Seq[String] = Seq.empty[String])(
     implicit transid: TransactionId): Future[ContainerId] = {
     blocking {
@@ -119,8 +119,11 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
     runCmd(Seq("rm", id.asString), config.timeouts.rm).map(_ => ())
 
   // wskc --namespace wsk inspect --isOomKilled myContainer
-  def isOomKilled(id: ContainerId)(implicit transid: TransactionId): Future[Boolean] =
-    runCmd(Seq("inspect", "--isOomKilled", id.asString), config.timeouts.inspect).map(_.toBoolean)
+  def isOomKilled(id: ContainerId)(implicit transid: TransactionId): Future[Boolean] = {
+    // TODO find real implementation in wskc, for now always return false
+    // runCmd(Seq("inspect", "--isOomKilled", id.asString), config.timeouts.inspect).map(_.toBoolean)
+    Future.successful(false)
+  }
 
   // wskc --namespace wsk network del mycontainer
   def deleteNetwork(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =

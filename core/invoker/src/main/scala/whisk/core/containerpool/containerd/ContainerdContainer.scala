@@ -65,8 +65,8 @@ object ContainerdContainer {
       cpuShares.toString,
       "--memory",
       s"${memory.toMB}",
-      environmentArgs ++
-      name.map(n => Seq("--name", n)).getOrElse(Seq.empty))
+      "--memory-swap",
+      s"${memory.toMB}")
 
     val imageToUse = image.fold(_.publicImageName, identity)
 
@@ -93,7 +93,7 @@ object ContainerdContainer {
       cname <- name
         .map(n => Future.successful(n))
         .getOrElse(Future.failed(WhiskContainerStartupError("No name specified")))
-      id <- wskc.run(imageToUse, cname, environmentArgs).recoverWith {
+      id <- wskc.run(imageToUse, cname, args).recoverWith {
         case _ =>
           // Iff the pull was successful, we assume that the error is not due to an image pull error, otherwise
           // the docker run was a backup measure to try and start the container anyway. If it fails again, we assume
@@ -125,7 +125,10 @@ class ContainerdContainer(protected val id: ContainerId, protected val addr: Con
   protected val waitForOomState: FiniteDuration = 2.seconds
   protected val filePollInterval: FiniteDuration = 5.milliseconds
 
-  override def suspend()(implicit transid: TransactionId): Future[Unit] = wskc.pause(id)
+  override def suspend()(implicit transid: TransactionId): Future[Unit] = {
+    super.suspend()
+    wskc.pause(id)
+  }
   override def destroy()(implicit transid: TransactionId): Future[Unit] = {
     super.destroy()
     wskc.rm(id)
