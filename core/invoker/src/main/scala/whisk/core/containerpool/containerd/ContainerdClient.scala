@@ -43,7 +43,9 @@ case class WskcClientTimeoutConfig(run: Duration,
                                    pull: Duration,
                                    ps: Duration,
                                    pause: Duration,
-                                   unpause: Duration)
+                                   unpause: Duration,
+                                   init: Duration,
+                                   cleanup: Duration)
 
 /**
   * Configuration for docker client
@@ -57,7 +59,7 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
   implicit private val ec = executionContext
 
   protected val wskcCmd: Seq[String] = {
-    val alternatives = List("/usr/local/bin/wskc")
+    val alternatives = List("/usr/local/bin/wskc", "/usr/bin/wskc", "/bin/wskc")
 
     val wskcBin = Try {
       alternatives.find(a => Files.isExecutable(Paths.get(a))).get
@@ -65,8 +67,17 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
       throw new FileNotFoundException(s"Couldn't locate wskc binary (tried: ${alternatives.mkString(", ")}).")
     }
 
-    //Seq(wskcBin, "--namespace", "wsk-action-container")
-    Seq(wskcBin)
+    Seq(wskcBin, "--namespace", "wsk")
+  }
+
+  def init(): Future[Unit] = {
+    implicit val transid = TransactionId.invoker
+    runCmd(Seq("init"), config.timeouts.init).map(_ => ())
+  }
+
+  def cleanup(): Future[Unit] = {
+    implicit val transid = TransactionId.invoker
+    runCmd(Seq("cleanup"), config.timeouts.cleanup).map(_ => ())
   }
 
   def run(image: String, name: String, args: Seq[String] = Seq.empty[String])(
@@ -127,7 +138,12 @@ trait WskcApi {
   /**
     * Initialize a containerd namespace
     */
-  //def init(): Future[Unit]
+  def init(): Future[Unit]
+
+  /**
+    * Cleanup a containerd namespace
+    */
+  def cleanup(): Future[Unit]
 
   /**
     * Spawns a container in detached mode.
