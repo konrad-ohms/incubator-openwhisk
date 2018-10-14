@@ -5,22 +5,37 @@ FROM scala
 
 ENV UID=1001 \
     NOT_ROOT_USER=owuser
-ENV DOCKER_VERSION=1.12.0 \
-    DOCKER_DOWNLOAD_SHA256=3dd07f65ea4a7b4c8829f311ab0213bca9ac551b5b24706f3e79a97e22097f8b
+ENV CONTAINERD_VERSION=1.1.4 \
+    CONTAINERD_DOWNLOAD_SHA256=08cdfe5680315b43b26c974f75d5b83de1ab22a188fda9edfe18f6cb92fe93f3 \
+    CNI_VERSION=0.6.0 \
+    CNI_DOWNLOAD_SHA256=a7f84a742c8f3a95843b3cc636444742554a4853835649ec371a07c841daebab \
+    CNI_PLUGINS_VERSION=0.7.1 \
+    CNI_PLUGINS_DOWNLOAD_SHA256=6ecc5c7dbb8e4296b0d0d017e5440618e19605b9aa3b146a2c29af492f299dc7
 
-RUN apk add --update openssl
+RUN apk add --update openssl iptables bridge-utils
 
-# Uncomment to fetch latest version of docker instead: RUN wget -qO- https://get.docker.com | sh
-# Install docker client
-RUN curl -sSL -o docker-${DOCKER_VERSION}.tgz https://get.docker.com/builds/Linux/x86_64/docker-${DOCKER_VERSION}.tgz && \
-echo "${DOCKER_DOWNLOAD_SHA256}  docker-${DOCKER_VERSION}.tgz" | sha256sum -c - && \
-tar --strip-components 1 -xvzf docker-${DOCKER_VERSION}.tgz -C /usr/bin docker/docker && \
-tar --strip-components 1 -xvzf docker-${DOCKER_VERSION}.tgz -C /usr/bin docker/docker-runc && \
-rm -f docker-${DOCKER_VERSION}.tgz && \
-chmod +x /usr/bin/docker && \
-chmod +x /usr/bin/docker-runc
+# Install containerd client (remove in production as wskc directly uses GRPC)
+RUN curl -sSL -o containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz && \
+    echo "${CONTAINERD_DOWNLOAD_SHA256}  containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz" | sha256sum -c - && \
+    tar -xvzf containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz && \
+    rm -f containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz
+
+# Install CNI tool (remove in production as CNI lib is directly used in wskc)
+RUN curl -sSL -o cni-amd64-v${CNI_VERSION}.tgz https://github.com/containernetworking/cni/releases/download/v${CNI_VERSION}/cni-amd64-v${CNI_VERSION}.tgz && \
+    echo "${CNI_DOWNLOAD_SHA256}  cni-amd64-v${CNI_VERSION}.tgz" | sha256sum -c - && \
+    tar --directory /usr/local/bin -zxvf cni-amd64-v${CNI_VERSION}.tgz && \
+    rm -f cni-amd64-v${CNI_VERSION}.tgz
+
+# Install CNI plugins (bridge necessary, it is not part of wskc)
+RUN curl -sSL -o cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz && \
+    echo "${CNI_PLUGINS_DOWNLOAD_SHA256}  cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz" | sha256sum -c - && \
+    tar --directory /usr/local/bin -zxvf cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz && \
+    rm -f cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz
 
 ADD build/distributions/invoker.tar ./
+# TODO currently wskc.tar must be copied into distributions folder manually
+# As soon as wskc is published, this should be compiled prior the docker build
+ADD build/distributions/wskc.tar ./
 
 COPY init.sh /
 RUN chmod +x init.sh
