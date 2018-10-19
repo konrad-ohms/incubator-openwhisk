@@ -1,8 +1,13 @@
 # Licensed to the Apache Software Foundation (ASF) under one or more contributor
 # license agreements; and to You under the Apache License, Version 2.0.
 
-FROM scala
+# define previous image as build stage in order to fetch results from previous image
+FROM scala AS build
 
+FROM adoptopenjdk/openjdk8:jdk8u172-b11
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 ENV UID=1001 \
     NOT_ROOT_USER=owuser
 ENV CONTAINERD_VERSION=1.1.4 \
@@ -12,7 +17,13 @@ ENV CONTAINERD_VERSION=1.1.4 \
     CNI_PLUGINS_VERSION=0.7.1 \
     CNI_PLUGINS_DOWNLOAD_SHA256=6ecc5c7dbb8e4296b0d0d017e5440618e19605b9aa3b146a2c29af492f299dc7
 
-RUN apk add --update openssl iptables bridge-utils
+# copy shell scripts from usual build artifact
+COPY --from=build /transformEnvironment.sh /transformEnvironment.sh
+COPY --from=build /copyJMXFiles.sh /copyJMXFiles.sh
+
+RUN apt-get update && \
+    apt-get install -y sed curl bash openssl iptables bridge-utils && \
+    apt-get clean
 
 # Install containerd client (remove in production as wskc directly uses GRPC)
 RUN curl -sSL -o containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz && \
@@ -39,7 +50,7 @@ ADD build/distributions/wskc.tar ./
 
 COPY init.sh /
 RUN chmod +x init.sh
-RUN adduser -D -u ${UID} -h /home/${NOT_ROOT_USER} -s /bin/bash ${NOT_ROOT_USER}
+RUN useradd -u ${UID} -ms /bin/bash ${NOT_ROOT_USER}
 
 EXPOSE 8080
 CMD ["./init.sh", "0"]
