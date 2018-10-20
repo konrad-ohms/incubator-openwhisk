@@ -22,7 +22,11 @@ COPY --from=build /transformEnvironment.sh /transformEnvironment.sh
 COPY --from=build /copyJMXFiles.sh /copyJMXFiles.sh
 
 RUN apt-get update && \
-    apt-get install -y sed curl bash openssl iptables bridge-utils && \
+    apt-get install -y curl \
+        iptables \
+        iproute2 \
+        tar \
+        bridge-utils && \
     apt-get clean
 
 # Install containerd client (remove in production as wskc directly uses GRPC)
@@ -32,10 +36,10 @@ RUN curl -sSL -o containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz https://git
     rm -f containerd-${CONTAINERD_VERSION}.linux-amd64.tar.gz
 
 # Install CNI tool (remove in production as CNI lib is directly used in wskc)
-RUN curl -sSL -o cni-amd64-v${CNI_VERSION}.tgz https://github.com/containernetworking/cni/releases/download/v${CNI_VERSION}/cni-amd64-v${CNI_VERSION}.tgz && \
-    echo "${CNI_DOWNLOAD_SHA256}  cni-amd64-v${CNI_VERSION}.tgz" | sha256sum -c - && \
-    tar --directory /usr/local/bin -zxvf cni-amd64-v${CNI_VERSION}.tgz && \
-    rm -f cni-amd64-v${CNI_VERSION}.tgz
+#RUN curl -sSL -o cni-amd64-v${CNI_VERSION}.tgz https://github.com/containernetworking/cni/releases/download/v${CNI_VERSION}/cni-amd64-v${CNI_VERSION}.tgz && \
+#    echo "${CNI_DOWNLOAD_SHA256}  cni-amd64-v${CNI_VERSION}.tgz" | sha256sum -c - && \
+#    tar --directory /usr/local/bin -zxvf cni-amd64-v${CNI_VERSION}.tgz && \
+#    rm -f cni-amd64-v${CNI_VERSION}.tgz
 
 # Install CNI plugins (bridge necessary, it is not part of wskc)
 RUN curl -sSL -o cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz && \
@@ -43,10 +47,10 @@ RUN curl -sSL -o cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz https://github.co
     tar --directory /usr/local/bin -zxvf cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz && \
     rm -f cni-plugins-amd64-v${CNI_PLUGINS_VERSION}.tgz
 
-ADD build/distributions/invoker.tar ./
 # TODO currently wskc.tar must be copied into distributions folder manually
 # As soon as wskc is published, this should be compiled prior the docker build
 ADD build/distributions/wskc.tar ./
+ADD build/distributions/invoker.tar ./
 
 COPY init.sh /
 RUN chmod +x init.sh

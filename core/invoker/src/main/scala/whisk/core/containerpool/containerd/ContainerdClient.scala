@@ -96,7 +96,7 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
   def run(image: String, name: String, args: Seq[String] = Seq.empty[String])(
     implicit transid: TransactionId): Future[ContainerId] = {
     blocking {
-      runCmd(Seq("run") ++ args ++ Seq(image, name), config.timeouts.run)
+      runCmd(Seq("run") ++ args ++ Seq("docker.io/" + image, name), config.timeouts.run)
         .map(_ => ContainerId(name))
         .recoverWith {
           case e =>
