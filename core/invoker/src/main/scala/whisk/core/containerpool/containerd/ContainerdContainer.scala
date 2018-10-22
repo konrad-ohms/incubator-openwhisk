@@ -93,7 +93,7 @@ object ContainerdContainer {
       cname <- name
         .map(n => Future.successful(n))
         .getOrElse(Future.failed(WhiskContainerStartupError("No name specified")))
-      id <- wskc.run(imageToUse, cname, args).recoverWith {
+      containerTuple <- wskc.run(imageToUse, cname, args).recoverWith {
         case _ =>
           // Iff the pull was successful, we assume that the error is not due to an image pull error, otherwise
           // the docker run was a backup measure to try and start the container anyway. If it fails again, we assume
@@ -104,7 +104,7 @@ object ContainerdContainer {
             Future.failed(BlackboxStartupError(Messages.imagePullError(imageToUse)))
           }
       }
-    } yield new ContainerdContainer(id, ContainerAddress("127.0.0.1")) //TODO get real IP here
+    } yield new ContainerdContainer(containerTuple._1, containerTuple._2)
   }
 }
 

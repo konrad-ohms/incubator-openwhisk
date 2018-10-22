@@ -5,9 +5,6 @@
 FROM scala AS build
 
 FROM adoptopenjdk/openjdk8:jdk8u172-b11
-ENV LANG=en_US.UTF-8 \
-    LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
 ENV UID=1001 \
     NOT_ROOT_USER=owuser
 ENV CONTAINERD_VERSION=1.1.4 \
@@ -26,6 +23,7 @@ RUN apt-get update && \
         iptables \
         iproute2 \
         tar \
+        jq \
         bridge-utils && \
     apt-get clean
 

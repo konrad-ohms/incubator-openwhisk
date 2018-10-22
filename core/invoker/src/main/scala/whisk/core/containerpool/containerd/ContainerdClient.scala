@@ -27,13 +27,14 @@ import pureconfig.loadConfigOrThrow
 import scala.util.Try
 import whisk.common.{Logging, LoggingMarkers, TransactionId}
 import whisk.core.ConfigKeys
-import whisk.core.containerpool.ContainerId
+import whisk.core.containerpool.{ContainerAddress, ContainerId}
 import whisk.core.containerpool.docker.ProcessRunner
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future, blocking}
 import scala.concurrent.duration.Duration
 import scala.util.{Failure, Success}
+import spray.json._
 
 /**
   * Configuration for wskc client command timeouts.
@@ -94,10 +95,14 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
 
   // wskc --namespace wsk run --cpu-shares=0 --memory=256 --memory-swap=256 docker.io/openwhisk/action-nodejs-v8:latest mycontainer
   def run(image: String, name: String, args: Seq[String] = Seq.empty[String])(
-    implicit transid: TransactionId): Future[ContainerId] = {
+    implicit transid: TransactionId): Future[Tuple2[ContainerId, ContainerAddress]] = {
     blocking {
       runCmd(Seq("run") ++ args ++ Seq("docker.io/" + image, name), config.timeouts.run)
-        .map(_ => ContainerId(name))
+        .map(output => {
+          val containerMap = output.parseJson.asJsObject.fields
+          val ip = containerMap.get("ipaddress").get.toString.replaceAll("^\"|\"$", "");
+          (ContainerId(name), ContainerAddress(ip))
+        })
         .recoverWith {
           case e =>
             log.error(this, s"Failed create container for '$name': ${e.getClass} - ${e.getMessage}")
@@ -181,7 +186,7 @@ trait WskcApi {
     * @return id of the started container
     */
   def run(image: String, name: String, args: Seq[String] = Seq.empty[String])(
-    implicit transid: TransactionId): Future[ContainerId]
+    implicit transid: TransactionId): Future[Tuple2[ContainerId, ContainerAddress]]
 
   /**
     * Pauses the container with the given id.
