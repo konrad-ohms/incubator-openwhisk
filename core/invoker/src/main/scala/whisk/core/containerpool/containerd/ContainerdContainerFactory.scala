@@ -48,24 +48,15 @@ class ContainerdContainerFactory(instance: InvokerInstanceId,
   implicit val wskc = new ContainerdClient()(ec)
 
   override def init(): Unit = {
-    try {
-      wskc.cleanup()
-    } catch {
-      case e: Exception => logging.debug(this, s"Failed to cleanup containerd namespace before initializing, might be already clean: ${e.getMessage}")
-    }
-    try {
-      wskc.init()
-    } catch {
-      case e: Exception => logging.error(this, s"Failed to initialize containerd namespace: ${e.getMessage}")
-    }
+    wskc.cleanup()
+      .andThen {
+        // Ensure that init is not done before cleanup has finished
+        case _ => wskc.init()
+      }
   }
 
   override def cleanup(): Unit = {
-    try {
-      wskc.cleanup()
-    } catch {
-      case e: Exception => logging.error(this, s"Failed to cleanup containerd namespace: ${e.getMessage}")
-    }
+    wskc.cleanup()
   }
 
   override def createContainer(tid: TransactionId,
