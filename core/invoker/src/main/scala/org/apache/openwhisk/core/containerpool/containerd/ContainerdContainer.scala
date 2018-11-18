@@ -155,7 +155,7 @@ class ContainerdContainer(protected val id: ContainerId, protected val addr: Con
     }
   }
 
-  override protected def callContainer(path: String, body: JsObject, timeout: FiniteDuration, retry: Boolean = false)(
+  override protected def callContainer(path: String, body: JsObject, timeout: FiniteDuration, maxConcurrent: Int, retry: Boolean = false)(
     implicit transid: TransactionId): Future[RunResult] = {
     val started = Instant.now()
     val http = httpConnection.getOrElse {
@@ -165,7 +165,8 @@ class ContainerdContainer(protected val id: ContainerId, protected val addr: Con
         new ApacheBlockingContainerClient(
           s"${addr.host}:${addr.port}",
           timeout,
-          ActivationEntityLimit.MAX_ACTIVATION_ENTITY_LIMIT)
+          ActivationEntityLimit.MAX_ACTIVATION_ENTITY_LIMIT,
+          maxConcurrent)
       }
       httpConnection = Some(conn)
       conn
