@@ -137,6 +137,8 @@ class ContainerdContainer(protected val id: ContainerId, protected val addr: Con
 
   // TODO solve logging via containerd, currently it does not write into files nor pipes
   def logs(limit: ByteSize, waitForSentinel: Boolean)(implicit transid: TransactionId): Source[ByteString, Any] = {
+    // workaround to simulate log file reading -> completion ACK should not be faster than result ACK
+    Thread.sleep(10)
     Source.empty[ByteString]
   }
 
