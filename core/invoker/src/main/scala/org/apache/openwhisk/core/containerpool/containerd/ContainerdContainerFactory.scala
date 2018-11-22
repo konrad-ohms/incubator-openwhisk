@@ -18,9 +18,6 @@
 package org.apache.openwhisk.core.containerpool.containerd
 
 import akka.actor.ActorSystem
-import akka.japi.Option.Some
-
-import akka.actor.ActorSystem
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import org.apache.openwhisk.common.Logging
@@ -39,22 +36,25 @@ import org.apache.openwhisk.core.containerpool.ContainerArgsConfig
 class ContainerdContainerFactory(instance: InvokerInstanceId,
                                  parameters: Map[String, Set[String]],
                                  containerArgsConfig: ContainerArgsConfig =
-                                 loadConfigOrThrow[ContainerArgsConfig](ConfigKeys.containerArgs))(
+                                   loadConfigOrThrow[ContainerArgsConfig](ConfigKeys.containerArgs))(
   implicit actorSystem: ActorSystem,
   ec: ExecutionContext,
-  logging: Logging
-) extends ContainerFactory {
+  logging: Logging)
+    extends ContainerFactory {
+
   /** Initialize container clients */
   implicit val wskc = new ContainerdClient()(ec)
 
   override def init(): Unit = {
-    wskc.cleanup()
+    wskc
+      .cleanup()
       .andThen {
         // Ensure that init is not done before cleanup has finished
         case _ => wskc.init()
       }
   }
 
+  // cleanup container namespace on startup or shutdown
   override def cleanup(): Unit = {
     wskc.cleanup()
   }
@@ -64,17 +64,14 @@ class ContainerdContainerFactory(instance: InvokerInstanceId,
                                actionImage: ExecManifest.ImageName,
                                userProvidedImage: Boolean,
                                memory: ByteSize,
-                               cpuShares: Int)(
-    implicit config: WhiskConfig,
-    logging: Logging): Future[Container] = {
+                               cpuShares: Int)(implicit config: WhiskConfig, logging: Logging): Future[Container] = {
     ContainerdContainer.create(
       tid,
       image = if (userProvidedImage) Left(actionImage) else Right(actionImage.localImageName(config.runtimesRegistry)),
       memory = memory,
       cpuShares = cpuShares,
       environment = Map("__OW_API_HOST" -> config.wskApiHost),
-      name = Some(name)
-    )
+      name = Some(name))
   }
 }
 
@@ -85,9 +82,6 @@ object ContainerdContainerFactoryProvider extends ContainerFactoryProvider {
                         instanceId: InvokerInstanceId,
                         parameters: Map[String, Set[String]]): ContainerFactory = {
 
-    new ContainerdContainerFactory(instanceId, parameters)(
-      actorSystem,
-      actorSystem.dispatcher,
-      logging)
+    new ContainerdContainerFactory(instanceId, parameters)(actorSystem, actorSystem.dispatcher, logging)
   }
 }

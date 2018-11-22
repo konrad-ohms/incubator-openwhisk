@@ -216,8 +216,7 @@ object ConfigKeys {
   val runc = "whisk.runc"
   val runcTimeouts = s"$runc.timeouts"
 
-  val containerd = "whisk.containerd"
-  val containerdClient = s"$containerd.client"
+  val containerdClient = "whisk.containerd.client"
 
   val tracing = "whisk.tracing"
 

@@ -31,17 +31,16 @@ import org.apache.openwhisk.core.containerpool.{ContainerAddress, ContainerId}
 import org.apache.openwhisk.core.containerpool.docker.ProcessRunner
 
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.{ExecutionContext, Future, blocking}
+import scala.concurrent.{blocking, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 import scala.util.{Failure, Success}
 import spray.json._
 
 /**
-  * Configuration for wskc client command timeouts.
-  */
+ * Configuration for wskc client command timeouts.
+ */
 case class WskcClientTimeoutConfig(run: Duration,
                                    rm: Duration,
-                                   inspect: Duration,
                                    pull: Duration,
                                    pause: Duration,
                                    unpause: Duration,
@@ -49,22 +48,22 @@ case class WskcClientTimeoutConfig(run: Duration,
                                    cleanup: Duration)
 
 /**
-  * Configuration for wskc client
-  */
-case class WskcClientConfig(timeouts: WskcClientTimeoutConfig)
+ * Configuration for wskc client
+ */
+case class WskcClientConfig(namespace: String, timeouts: WskcClientTimeoutConfig)
 
 /**
-  * Serves as interface to the wskc CLI tool which will use containerd and CNI to manage network and containers.
-  *
-  * Be cautious with the ExecutionContext passed to this, as the
-  * calls to the CLI are blocking.
-  *
-  * Only one instance per invoker is needed.
-  */
-class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientConfig](ConfigKeys.containerdClient))(
-  executionContext: ExecutionContext)(
-  implicit log: Logging, as: ActorSystem)
-  extends WskcApi with ProcessRunner {
+ * Serves as interface to the wskc CLI tool which will use containerd and CNI to manage network and containers.
+ *
+ * Be cautious with the ExecutionContext passed to this, as the
+ * calls to the CLI are blocking.
+ *
+ * Only one instance per invoker is needed.
+ */
+class ContainerdClient(config: WskcClientConfig = loadConfigOrThrow[WskcClientConfig](ConfigKeys.containerdClient))(
+  executionContext: ExecutionContext)(implicit log: Logging, as: ActorSystem)
+    extends WskcApi
+    with ProcessRunner {
   implicit private val ec = executionContext
 
   // Determines how to run wskc. Failure to find the wskc binary implies
@@ -78,7 +77,7 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
       throw new FileNotFoundException(s"Couldn't locate wskc binary (tried: ${alternatives.mkString(", ")}).")
     }
 
-    Seq(wskcBin, "--namespace", "wsk")
+    Seq(wskcBin, "--namespace", config.namespace)
   }
 
   // wskc --namespace wsk init
@@ -130,19 +129,11 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
     Future.successful(false)
   }
 
-  // wskc --namespace wsk network del mycontainer
-  def deleteNetwork(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =
-    runCmd(Seq("network", "del", id.asString), config.timeouts.rm).map(_ => ())
-
-  // wskc --namespace wsk network add mycontainer
-  def createNetwork(id: ContainerId)(implicit transid: TransactionId): Future[Unit] =
-    runCmd(Seq("network", "add", id.asString), config.timeouts.rm).map(_ => ())
-
   /**
-    * Stores pulls that are currently being executed and collapses multiple
-    * pulls into just one. After a pull is finished, the cached future is removed
-    * to enable constant updates of an image without changing its tag.
-    */
+   * Stores pulls that are currently being executed and collapses multiple
+   * pulls into just one. After a pull is finished, the cached future is removed
+   * to enable constant updates of an image without changing its tag.
+   */
   // wskc --namespace wsk pull docker.io/openwhisk/action-nodejs-v8:latest
   private val pullsInFlight = TrieMap[String, Future[Unit]]()
   def pull(image: String)(implicit transid: TransactionId): Future[Unit] =
@@ -152,6 +143,7 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
       }
     })
 
+  // add log markers for every wskc invocation
   private def runCmd(args: Seq[String], timeout: Duration)(implicit transid: TransactionId): Future[String] = {
     val cmd = wskcCmd ++ args
     val start = transid.started(
@@ -169,79 +161,58 @@ class ContainerdClient( config: WskcClientConfig = loadConfigOrThrow[WskcClientC
 trait WskcApi {
 
   /**
-    * Initialize a containerd namespace and creates shared files on disk
-    */
+   * Cleans up (removes all containers in namespace) and initialize a containerd namespace by creating folders and shared files on disk
+   */
   def init(): Future[Unit]
 
   /**
-    * Cleanup a containerd namespace (removes all containers in namespace)
-    */
-  def cleanup(): Future[Unit]
-
-  /**
-    * Spawns a container in detached mode.
-    *
-    * @param image the image to start the container with
-    * @param args arguments for the ctr run command
-    * @return id of the started container
-    */
+   * Spawns a container in detached mode.
+   *
+   * @param image the image to start the container with
+   * @param args arguments for the ctr run command
+   * @return id of the started container
+   */
   def run(image: String, name: String, args: Seq[String] = Seq.empty[String])(
     implicit transid: TransactionId): Future[Tuple2[ContainerId, ContainerAddress]]
 
   /**
-    * Pauses the container with the given id.
-    *
-    * @param id the id of the container to pause
-    * @return a Future completing according to the command's exit-code
-    */
+   * Pauses the container with the given id.
+   *
+   * @param id the id of the container to pause
+   * @return a Future completing according to the command's exit-code
+   */
   def pause(id: ContainerId)(implicit transid: TransactionId): Future[Unit]
 
   /**
-    * Unpauses the container with the given id.
-    *
-    * @param id the id of the container to unpause
-    * @return a Future completing according to the command's exit-code
-    */
+   * Unpauses the container with the given id.
+   *
+   * @param id the id of the container to unpause
+   * @return a Future completing according to the command's exit-code
+   */
   def unpause(id: ContainerId)(implicit transid: TransactionId): Future[Unit]
 
   /**
-    * Removes the container with the given id.
-    *
-    * @param id the id of the container to remove
-    * @return a Future completing according to the command's exit-code
-    */
+   * Removes the container with the given id.
+   *
+   * @param id the id of the container to remove
+   * @return a Future completing according to the command's exit-code
+   */
   def rm(id: ContainerId)(implicit transid: TransactionId): Future[Unit]
 
   /**
-    * Removes a device pair from a network bridge
-    *
-    * @param id the id of the network owning container to remove
-    * @return a Future completing according to the command's exit-code
-    */
-  def deleteNetwork(id: ContainerId)(implicit  transid: TransactionId): Future[Unit]
-
-  /**
-    * Creates a device pair and connects it to a network bridge (creates bridge if necessary)
-    *
-    * @param id the id of the network owning container to remove
-    * @return a Future completing according to the command's exit-code
-    */
-  def createNetwork(id: ContainerId)(implicit  transid: TransactionId): Future[Unit]
-
-  /**
-    * Pulls the given image.
-    *
-    * @param image the image to pull
-    * @return a Future completing once the pull is complete
-    */
+   * Pulls the given image.
+   *
+   * @param image the image to pull
+   * @return a Future completing once the pull is complete
+   */
   def pull(image: String)(implicit transid: TransactionId): Future[Unit]
 
   /**
-    * Determines whether the given container was killed due to
-    * memory constraints.
-    *
-    * @param id the id of the container to check
-    * @return a Future containing whether the container was killed or not
-    */
+   * Determines whether the given container was killed due to
+   * memory constraints.
+   *
+   * @param id the id of the container to check
+   * @return a Future containing whether the container was killed or not
+   */
   def isOomKilled(id: ContainerId)(implicit transid: TransactionId): Future[Boolean]
 }

@@ -32,40 +32,35 @@ import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.http.Messages
 
 object ContainerdContainer {
+
   /**
-    * Creates a container running on a docker daemon.
-    *
-    * @param transid transaction creating the container
-    * @param image either a user provided (Left) or OpenWhisk provided (Right) image
-    * @param memory memorylimit of the container
-    * @param cpuShares sharefactor for the container
-    * @param environment environment variables to set on the container
-    * @param name optional name for the container
-    * @return a Future which either completes with a ContainerdContainer or one of two specific failures
-    */
+   * Creates a container running on a docker daemon.
+   *
+   * @param transid transaction creating the container
+   * @param image either a user provided (Left) or OpenWhisk provided (Right) image
+   * @param memory memorylimit of the container
+   * @param cpuShares sharefactor for the container
+   * @param environment environment variables to set on the container
+   * @param name optional name for the container
+   * @return a Future which either completes with a ContainerdContainer or one of two specific failures
+   */
   def create(transid: TransactionId,
              image: Either[ImageName, String],
              memory: ByteSize = 256.MB,
              cpuShares: Int = 0,
              environment: Map[String, String] = Map.empty,
              name: Option[String] = None)(implicit wskc: WskcApi,
-                                                    as: ActorSystem,
-                                                    ec: ExecutionContext,
-                                                    log: Logging): Future[ContainerdContainer] = {
+                                          as: ActorSystem,
+                                          ec: ExecutionContext,
+                                          log: Logging): Future[ContainerdContainer] = {
     implicit val tid: TransactionId = transid
 
     val environmentArgs = environment.flatMap {
       case (key, value) => Seq("--env", s"$key=$value")
     }.toSeq
 
-
-    val args = Seq(
-      "--cpu-shares",
-      cpuShares.toString,
-      "--memory",
-      s"${memory.toMB}",
-      "--memory-swap",
-      s"${memory.toMB}")
+    val args =
+      Seq("--cpu-shares", cpuShares.toString, "--memory", s"${memory.toMB}", "--memory-swap", s"${memory.toMB}")
 
     val imageToUse = image.fold(_.publicImageName, identity)
 
@@ -79,7 +74,7 @@ object ContainerdContainer {
         }
       case Left(_) =>
         // Iff the image tag is something else than latest, we tolerate an outdated image if one is available locally.
-        // A `docker run` will be tried nonetheless to try to start a container (which will succeed if the image is
+        // A `wskc run` will be tried nonetheless to try to start a container (which will succeed if the image is
         // already available locally)
         wskc.pull(imageToUse).map(_ => true).recover { case _ => false }
       case Right(_) =>
@@ -108,12 +103,12 @@ object ContainerdContainer {
 }
 
 /**
-  * Represents a container as run by containerd.
-  *
-  * @constructor
-  * @param id the id of the container
-  * @param addr the ip of the container
-  */
+ * Represents a container as run by containerd.
+ *
+ * @constructor
+ * @param id the id of the container
+ * @param addr the ip of the container
+ */
 class ContainerdContainer(protected val id: ContainerId, protected val addr: ContainerAddress)(
   implicit wskc: WskcApi,
   override protected val as: ActorSystem,
@@ -135,19 +130,18 @@ class ContainerdContainer(protected val id: ContainerId, protected val addr: Con
 
   def resume()(implicit transid: TransactionId): Future[Unit] = wskc.unpause(id)
 
-  // TODO solve logging via containerd, currently it does not write into files nor pipes
+  // TODO implement logging for containers launced by containerd, currently it does not write into files or pipes
+  // The prototype implementation will not include this part, as it is less relevant for cold invocation performance
   def logs(limit: ByteSize, waitForSentinel: Boolean)(implicit transid: TransactionId): Source[ByteString, Any] = {
-    // workaround to simulate log file reading -> completion ACK should not be faster than result ACK
-    Thread.sleep(10)
     Source.empty[ByteString]
   }
 
   /**
-    * Was the container killed due to memory exhaustion?
-    *
-    * @param retries number of retries to make
-    * @return a Future indicating a memory exhaustion situation
-    */
+   * Was the container killed due to memory exhaustion?
+   *
+   * @param retries number of retries to make
+   * @return a Future indicating a memory exhaustion situation
+   */
   private def isOomKilled(retries: Int = (waitForOomState / filePollInterval).toInt)(
     implicit transid: TransactionId): Future[Boolean] = {
     wskc.isOomKilled(id)(TransactionId.invoker).flatMap { killed =>
@@ -157,8 +151,11 @@ class ContainerdContainer(protected val id: ContainerId, protected val addr: Con
     }
   }
 
-  override protected def callContainer(path: String, body: JsObject, timeout: FiniteDuration, maxConcurrent: Int, retry: Boolean = false)(
-    implicit transid: TransactionId): Future[RunResult] = {
+  override protected def callContainer(path: String,
+                                       body: JsObject,
+                                       timeout: FiniteDuration,
+                                       maxConcurrent: Int,
+                                       retry: Boolean = false)(implicit transid: TransactionId): Future[RunResult] = {
     val started = Instant.now()
     val http = httpConnection.getOrElse {
       val conn = if (Container.config.akkaClient) {
